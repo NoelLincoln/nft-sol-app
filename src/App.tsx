@@ -16,11 +16,14 @@ import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-ad
 import { percentAmount, generateSigner } from "@metaplex-foundation/umi";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import bs58 from "bs58";
-import signAndSendTransaction from "./utils/signAndSendTransaction";
+// import signAndSendTransaction from "./utils/signAndSendTransaction";
 import { Connection, Transaction, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
 // const endpoint = "https://api.devnet.solana.com";
 
+// const endpoint = "https://api.mainnet-beta.solana.com"
+
+// const endpoint = "https://alpha-tame-dinghy.solana-mainnet.quiknode.pro/24f6b6225e2dee000e1a6e7f1afecbba8980decb/"
 const endpoint = "https://mainnet.helius-rpc.com/?api-key=9c13c71d-3088-4fc4-bc03-7c7a270b0bcd"
 
 const WalletInfo: React.FC = () => {
@@ -33,7 +36,7 @@ const WalletInfo: React.FC = () => {
   };
 
   const handleMint = async () => {
-    if (!wallet.publicKey || !signAndSendTransaction) return;
+    if (!wallet.publicKey || !window.solana) return;
   
     try {
       setLoading(true);
@@ -44,7 +47,7 @@ const WalletInfo: React.FC = () => {
       const seller = new PublicKey("FQ1qSLJzpBtBbiKjqnpUPLFWbn8MM4c4TeNyeDLV6rxt");
       const amount = 0.005 * LAMPORTS_PER_SOL;
   
-      // STEP 1: Transfer 0.005 SOL using your utility
+      // STEP 1: Transfer SOL using Phantom-native method
       log("Requesting 0.005 SOL payment...");
       const transaction = new Transaction().add(
         SystemProgram.transfer({
@@ -57,11 +60,8 @@ const WalletInfo: React.FC = () => {
       transaction.feePayer = buyer;
       transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   
-      const signature = await signAndSendTransaction(
-        window.solana as any, // cast to PhantomProvider
-        transaction
-      );
-  
+      // ✅ Use Phantom's native method: unsigned tx passed directly
+      const { signature } = await window.solana.signAndSendTransaction(transaction);
       await connection.confirmTransaction(signature, "confirmed");
   
       log(`💸 Payment successful: <a href="https://explorer.solana.com/tx/${signature}?cluster=mainnet-beta" target="_blank">View</a>`);
@@ -83,6 +83,7 @@ const WalletInfo: React.FC = () => {
         name: "Demo NFT",
         symbol: "DNFT",
         sellerFeeBasisPoints: percentAmount(0),
+        tokenOwner: umi.identity.publicKey, // ✅ ensures the NFT is sent to the connected wallet
       }).sendAndConfirm(umi);
   
       const base58Signature = bs58.encode(nft.signature);
