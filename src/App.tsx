@@ -19,9 +19,9 @@ import bs58 from "bs58";
 import signAndSendTransaction from "./utils/signAndSendTransaction";
 import { Connection, Transaction, SystemProgram, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 
-// const endpoint = "https://api.devnet.solana.com";
+const endpoint = "https://api.devnet.solana.com";
 
-const endpoint = "https://mainnet.helius-rpc.com/?api-key=9c13c71d-3088-4fc4-bc03-7c7a270b0bcd"
+// const endpoint = "https://mainnet.helius-rpc.com/?api-key=9c13c71d-3088-4fc4-bc03-7c7a270b0bcd"
 
 const WalletInfo: React.FC = () => {
   const wallet = useWallet();
@@ -31,76 +31,87 @@ const WalletInfo: React.FC = () => {
   const log = (message: string) => {
     setLogs(prev => [...prev, message]);
   };
+  
+const handleMint = async () => {
+  if (!wallet.publicKey || !signAndSendTransaction) return;
 
-  const handleMint = async () => {
-    if (!wallet.publicKey || !signAndSendTransaction) return;
-  
-    try {
-      setLoading(true);
-      setLogs([]);
-  
-      const connection = new Connection(endpoint);
-      const buyer = wallet.publicKey;
-      const seller = new PublicKey("FQ1qSLJzpBtBbiKjqnpUPLFWbn8MM4c4TeNyeDLV6rxt");
-      const amount = 0.005 * LAMPORTS_PER_SOL;
-  
-      // STEP 1: Transfer 0.005 SOL using your utility
-      log("Requesting 0.005 SOL payment...");
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: buyer,
-          toPubkey: seller,
-          lamports: amount,
-        })
-      );
-  
-      transaction.feePayer = buyer;
-      transaction.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-  
-      const signature = await signAndSendTransaction(
-        window.solana as any, // cast to PhantomProvider
-        transaction
-      );
-  
-      await connection.confirmTransaction(signature, "confirmed");
-  
-      log(`💸 Payment successful: <a href="https://explorer.solana.com/tx/${signature}?cluster=mainnet-beta" target="_blank">View</a>`);
-  
-      // STEP 2: Mint NFT
-      log("Minting NFT...");
-      const umi = createUmi(endpoint)
-        .use(walletAdapterIdentity(wallet))
-        .use(mplTokenMetadata());
-  
-      const metadataUri =
-        "https://gateway.pinata.cloud/ipfs/bafkreiaqw52kv3rbs6gkqb27wpz3ga3qmmvfjkskbjzpmiyrrgmjklqkku";
-  
-      const mint = generateSigner(umi);
-  
-      const nft = await createNft(umi, {
-        mint,
-        uri: metadataUri,
-        name: "Demo NFT",
-        symbol: "DNFT",
-        sellerFeeBasisPoints: percentAmount(0),
-      }).sendAndConfirm(umi);
-  
-      const base58Signature = bs58.encode(nft.signature);
-      log("✅ NFT minted successfully!");
-      log(`🧾 Signature: ${base58Signature}`);
-      log(`🪙 Mint Token: ${mint.publicKey.toString()}`);
-      log(
-        `🔗 <a href="https://explorer.solana.com/tx/${base58Signature}?cluster=mainnet-beta" target="_blank" rel="noopener noreferrer">View on Explorer</a>`
-      );
-    } catch (e: any) {
-      console.error("Minting failed", e);
-      log(`❌ Minting failed: ${e.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
+  try {
+    setLoading(true);
+    setLogs([]);
 
+    const connection = new Connection(endpoint);
+    const buyer = wallet.publicKey;
+    const seller = new PublicKey("FQ1qSLJzpBtBbiKjqnpUPLFWbn8MM4c4TeNyeDLV6rxt");
+    const amount = 0.005 * LAMPORTS_PER_SOL;
+
+    // STEP 1: Transfer SOL
+    log("Requesting 0.005 SOL payment...");
+    const paymentTx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: buyer,
+        toPubkey: seller,
+        lamports: amount,
+      })
+    );
+
+    paymentTx.feePayer = buyer;
+    paymentTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    const paymentSig = await signAndSendTransaction(
+      window.solana as any,
+      paymentTx
+    );
+
+    await connection.confirmTransaction(paymentSig, "confirmed");
+
+    log(`💸 Payment successful: <a href="https://explorer.solana.com/tx/${paymentSig}?cluster=mainnet-beta" target="_blank">View</a>`);
+
+    // STEP 2: Mint NFT using unsigned transaction
+    log("Minting NFT...");
+    const umi = createUmi(endpoint)
+      .use(walletAdapterIdentity(wallet))
+      .use(mplTokenMetadata());
+
+    const metadataUri =
+      "https://gateway.pinata.cloud/ipfs/bafkreiaqw52kv3rbs6gkqb27wpz3ga3qmmvfjkskbjzpmiyrrgmjklqkku";
+
+    const mint = generateSigner(umi);
+
+    // Build the NFT creation transaction
+    const createNftBuilder = await createNft(umi, {
+      mint,
+      uri: metadataUri,
+      name: "Demo NFT",
+      symbol: "DNFT",
+      sellerFeeBasisPoints: percentAmount(0),
+    });
+
+    const nftTx = await createNftBuilder.transaction();
+
+    nftTx.feePayer = buyer;
+    nftTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+    const nftSig = await signAndSendTransaction(
+      window.solana as any,
+      nftTx
+    );
+
+    await connection.confirmTransaction(nftSig, "confirmed");
+
+    log("✅ NFT minted successfully!");
+    log(`🧾 Signature: ${nftSig}`);
+    log(`🪙 Mint Token: ${mint.publicKey.toString()}`);
+    log(
+      `🔗 <a href="https://explorer.solana.com/tx/${nftSig}?cluster=mainnet-beta" target="_blank" rel="noopener noreferrer">View on Explorer</a>`
+    );
+
+  } catch (e: any) {
+    console.error("Minting failed", e);
+    log(`❌ Minting failed: ${e.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <>
